@@ -1,0 +1,561 @@
+\documentclass{article} % For LaTeX2e
+\usepackage{nips13submit_e,times}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{graphicx}
+
+% my extra stuff
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{amsfonts} % mathbb support
+\usepackage{amsmath} % multiline equations
+\usepackage{amssymb} % \intercal (transpose)
+\usepackage{hyperref} % hyperlinks
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,
+    urlcolor=cyan,
+}
+
+
+\title{Recurrent Neural Networks : a Dynamical Systems Perspective}
+
+\author{
+Eric V. Jang \\
+APMA136 Term Paper \\
+Brown University \\
+Providence, RI 02912 \\
+\texttt{eric\_jang@brown.edu} \\
+}
+
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to \LaTeX{} to determine where to break
+% the lines. Using \AND forces a linebreak at that point. So, if \LaTeX{}
+% puts 3 of 4 authors names on the first line, and the last on the scond
+% line, try using \AND instead of \And before the third author name.
+
+\newcommand{\fix}{\marginpar{FIX}}
+\newcommand{\new}{\marginpar{NEW}}
+
+\newcommand{\bf}[1]{\mathbf{#1}}
+\newcommand{\x}{\bf{x}}
+%\newcommand{\r}{\bf{r}}
+\newcommand{\W}{\bf{W}}
+\newcommand{\xstar}{\bf{x^\star}}
+\newcommand{\F}{\bf{F}}
+\newcommand{\J}{\bf{J}}
+\newcommand{\p}{\partial}
+\newcommand{\pf}[2]{\frac{\p{#1}}{\p{#2}}}
+\newcommand{\ppf}[3]{\frac{\p^2#1}{\p#2\p#3}}
+%\nipsfinalcopy % Uncomment for camera-ready version
+
+
+
+\begin{document}
+
+% Clear introduction previewing the topic
+% Main points clearly stated, well-organized
+% Clear conclusion summarizing the topic
+% Mathematics are correct
+% Mathematics go well beyond content of previous work
+% Diagrams are clear, accurate, integrated into report
+% Level of presentation is appropriate for audience
+% Sources properly cited, correct bibliography included
+% Correct grammar and spelling
+
+
+\maketitle
+
+\begin{abstract}
+
+
+
+\end{abstract}
+
+\section{Introduction} % no equations here
+
+Artificial Neural Networks (ANNs) are a family of neurally-inspired information processing systems that perform nonlinear transformations on high-dimensional inputs. Generally, an ANN is a collection of ``neuronal units'' that are simulated over time. At each time step, each neuronal unit integrates activations from it's ``presynaptic'' neighbors to compute its own activation. Then, the unit forwards its activation to each of its ``postsynaptic'' neighbors, and the process starts over. Neural networks with a nonlinear activation function satisfy the universal approximation theorem, and can exhibit arbitrary memory-bounded computation \cite{Hornik1991251}.
+
+In most ANN architectures, units are organized into ``layers'' to impose connectivity structure between an otherwise fully-connected network. These layers can be chained together to form complex hierarchical representations of inputs that self-organize in a fully-connected network. A wide variety of ANN architectures exist for various problem types (citation needed).
+
+In feed-forward networks, layers are connected in a directed, acyclic graph. Activations are propagated sequentially along the graph until they terminate at the leaf nodes.
+
+In a Recurrent Neural Network (RNN), the connectivity between layers can form a directed multigraph. Through forward propagation, activation state can loop back and revisit the same layers over and over again. This creates an internal ``memory'' state that the network can then utilize to incorporate new observations with old ones.
+
+\begin{figure}
+\centering
+\begin{subfigure}{.5\textwidth}
+  \centering
+  \includegraphics[height=.3\textheight]{images/ff.png}
+  \caption{Feedforward Neural Network}
+  \label{fig:sub1}
+\end{subfigure}%
+\begin{subfigure}{.5\textwidth}
+  \centering
+  \includegraphics[height=.3\textheight]{images/rnn.png}
+  \caption{Recurrent Neural Network (RNN)}
+  \label{fig:sub2}
+\end{subfigure}
+\caption{Example of two Artificial Neural Networks (ANNs)}
+\label{fig:test}
+\end{figure}
+
+Recent breakthroughs in the feasibility of training ANNs have resulted in architectures with unprecedented performance in speech recognition, object recognition, and regression tasks \cite{NIPS2012_4824}. The term ``Deep Learning'' describes this trendy intersection of big data, machine learning, and high-performance computing.
+
+Despite these improvements, how RNNs actually learn and implement their desired computations is still not well understood. For all it's representational power and accuracy, the state-of-art approach in debugging neural network models is to increase the size the model until it no longer underfits the training dataset, and then add training data until the model no longer overfits the validation dataset. Choosing specifics like layer-to-layer connectivity or regularization schemes are generally regarded as more of an art than a science.
+
+Motivated by a general lack of understanding of \textit{how} these ``black box'' models learn and compute, I set out to analyze RNNs from a dynamical systems perspective as done by Sussillo and Barak \cite{SussilloBarak2014253}. As an extension to their work, I also investigate how the choice of activation function and pre-training can drastically change the spatial arrangement of fixed points in the system.
+
+\section{Definitions}
+
+\begin{itemize}
+  \item Boldfaced symbols $\x$ denote that $\x$ is a vector or a matrix, and a scalar otherwise.
+  \item $\bf{A} \in \mathbb{R}^{M \times N}$ refers to a matrix $A$ with M rows and N columns.
+  \item Subscripts $\F_i$ denote the $i$'th element of the vector $\F$. Multiple subscripts in $\bf{M}_{rc}$ denote the value at row $r$, column $c$ of matrix $M$.
+
+\end{itemize}
+
+\section{Finding Fixed and Slow Points}
+
+Let $\x \in \mathbb{R}^N$ be a N-dimensional state vector, with dynamics governed by the following set of first-order, differential equations:
+
+\begin{equation}
+\dot{\x} = \frac{d\F}{dt} = \F(\x)
+\end{equation}
+
+A fixed point $\xstar \in \mathbb{R}^N$ then satisfies the following:
+
+\begin{equation} \label{eq:Fq}
+  \F(\xstar) = \bf{0}
+\end{equation}
+
+Fixed points are the first line of inquiry for characterizing the phase space of a system, followed by local linearization to determine how trajectories are routed locally about the points.
+
+Consider the Taylor expansion of Equation (\ref{eq:Fq}) about the point $\x = \xstar+\bf{\delta}$:
+
+\begin{equation} \label{eq:Taylor}
+  \F(\xstar+\bf{\delta}) = \F(\xstar) + \F'(\xstar)\bf{\delta} + \frac{1}{2}\F''(\xstar)\bf{\delta}^2 +...
+\end{equation}
+
+When $\bf{\delta}$ is sufficiently small, the first-order terms of $F(\xstar+\bf{\delta})$ dominate the higher-order terms in Equation (\ref{eq:Taylor}), so $\F(\x)$ can be approximated as a linear system.
+
+Let objective function $q \in \mathbb{R}$ be defined as:
+
+\begin{equation} \label{eq:q}
+  q(\x)=\frac{1}{2}{|\F(\x)|^2}=\frac{1}{2}\sum_{i=1}^{N}{\F_i(\x)^2}
+\end{equation}
+
+Observe that $q(\x) > 0$ for all $x \neq \xstar$. Intuitively, it is a ``kinetic energy'' cost function that we seek to minimize in order to find the slowest parts of the phase portrait.
+
+In this work we use the conjugate gradient (CG) method to minimize $q$, though it should be noted that simpler optimization methods like gradient descent will also converge to the same points, albeit slowly.
+
+Gradient descent works by moving the current state trajectory ``downhill'' in a randomly chosen direction, or via steepest descent. This is a first-order method that potentially wastes computation time by repeatedly moving down the same direction. In contrast, the conjugate gradient method picks a sequence of orthogonal search directions such that it jumps to the basin of a locally quadratic error surface in a short number of steps, which typically leads to faster convergence times.
+
+Because CG is a second-order method, it requires the constant evaluation of the gradient $\nabla q(\x)$ and Hessian $\bf{H}$ with respect to $\x$:
+
+To compute the gradient, we use Equation (\ref{eq:q}) and the chain rule:
+
+\begin{align}
+  \nabla q(\x)_i &= \pf{q}{\x_i} \\
+  &= \frac{2}{2}{\F_1(\x)\pf{\F_1(x)}{\x_i}} + \frac{2}{2}{\F_2(\x)\pf{\F_2(x)}{\x_i}} + ... +
+  \frac{2}{2}{\F_N(\x)\pf{\F_N(x)}{\x_i}} \\
+  &=\dot{\x_1}\pf{\F_1(x)}{\x_i} +
+  \dot{\x_2}\pf{\F_2(x)}{\x_i}+...\dot{\x_N}\pf{\F_N(x)}{\x_i} \\
+  &=\pf{\F(x)}{\x_i}^{\intercal}\dot{x}
+\end{align}
+
+In vector notation, this can be re-written as
+
+\begin{equation} \label{eq:Jacobian}
+  \nabla q(\x) = \J^{\intercal}\dot{x}
+\end{equation}
+
+% TODO - this sounds AWKWARD
+As for the Hessian, we approximate it using the Gauss-Newton approximation:
+
+\begin{align}
+\bf{H} &= \begin{pmatrix}
+\ppf{q}{\x_1}{\x_1} & \ppf{q}{\x_1}{\x_2} & \cdots & \ppf{q}{\x_1}{\x_N} \\
+\ppf{q}{\x_2}{\x_1} & \ddots &  & \vdots \\
+ &  &  & \\
+\ppf{q}{\x_N}{\x_1} & \cdots &  & \ppf{q}{\x_N}{\x_N}
+\end{pmatrix} \\
+\ppf{q}{\x_i}{\x_j} &= \sum_{k=1}^{N}\pf{\F_k}{\x_i}\pf{\F_k}{\x_j} + \sum_{k=1}^{N}{\dot{\x}_k\pf{\F_k}{\x_i}\pf{\F_k}{\x_j}} \\
+&\approx \sum_{k=1}^{N}\pf{\F_k}{\x_i}\pf{\F_k}{\x_j}
+\end{align}
+
+In vector notation,
+
+\begin{equation} \label{eq:Hessian}
+  \bf{H} = \J^{\intercal}\J
+\end{equation}
+
+It is worth mentioning that this numerical method is unable to distinguish between fixed points and ghosts, as there is no clear-cut value for numerical precision to classify the two. Sussillo and Barak chose $1e-30$ as the CG tolerance for fixed points and $1e-27$ as the tolerance for ghosts.
+
+%%%% SIMPLE 2D EXAMPLE %%%%%
+
+\subsection{A Simple 2D Example}
+
+The following two-dimensional toy system illustrates the use of the conjugate-gradient optimization technique for finding fixed points. Our system is given by:
+
+\begin{align} % asterix determines whether it is numbered or not
+\dot{x} = (1-x^2)y  \label{eq:simple2d:x}  \\
+\dot{y} = \frac{x}{2}-y  \label{eq:simple2d:y}
+\end{align}
+
+Solving for $x$-nullclines, we have $\dot{x} = 0 \iff y = 0 \lor x = \pm 1$. Solving for the $y$-nullclines, we have $\dot{y} = 0 \iff y = \frac{1}{2}x$. The fixed points are located at the intersection of the $x$ and $y$ nullclines: $(1,\frac{1}{2})$, $(1,-\frac{1}{2})$, and $(0,0)$.
+
+The Jacobian is given by:
+
+\begin{align}
+  \bf{J}(x,y) &= \begin{pmatrix}
+    \pf{f}{x} & \pf{f}{y}\\
+    \pf{g}{x} & \pf{g}{y}
+    \end{pmatrix}
+    \\
+&= \begin{pmatrix}
+    -2xy & 1-x^2\\
+    \frac{1}{2} & -1
+    \end{pmatrix}
+\end{align}
+
+Evaluating $J$ at $(1,\frac{1}{2})$, $(1,-\frac{1}{2})$, and $(0,0)$ and computing eigenvalues reveal a stable node, a stable node, and a saddle, respectively.
+
+\begin{figure}
+\centering
+\includegraphics[height=.5\textwidth]{images/simple2d.png}
+\caption{Contour plot of $q$ as a function of $x$ and $y$, with phase portrait of the system in Equations (\ref{eq:simple2d:x}, \ref{eq:simple2d:y}). Fixed points found via conjugate-gradient minimization are plotted in red. A saddle node at $(0,0)$ funnels incoming trajectories towards either one of the stable, attracting nodes.}
+\label{fig:simple2d}
+\end{figure}
+
+%%%% BEGIN RNNs %%%%%
+
+\section{Jacobian and Hessian of a simple RNN}
+
+Consider a simplified RNN, as depicted in Figure (\ref{fig:simple_rnn}).  As in the simple 2D example, we would like to derive analytical expressions for the RNN's kinetic energy $q(\x)$, as well as gradient $\nabla q(\x)$ and Hessian (approximation) $\bf{H}$.
+
+Let the dynamics of this RNN be governed by the following element-wise system:
+
+\begin{equation} \label{eq:simpleRNN}
+  \bf{F}_i(\x) &=-\x_i + \sum_k^N{\bf{W^r}}_{ik}\bf{r}_k
+\end{equation}
+
+The $ith$ row of the Jacobian matrix is then given by
+
+\begin{equation}
+  \pf{\bf{F}_i(\x)}{\x_j} &= -\delta_{ij} + \bf{W^r}_{ij}\pf{\dot{\bf{r}}_j(x)}{\x_j}
+\end{equation}
+
+Where $\delta_{ij} \iff i = j$. For clarity, the form of the Jacobian is shown in Equation (\ref{eq:JacRNN}).
+
+\begin{equation} \label{eq:JacRNN}
+  \bf{J} = \begin{pmatrix}
+    \square & \square & \square \\
+    \square & \square & \square \\
+    \square & \pf{\F_i}{\x_j} & \square
+  \end{pmatrix} = \begin{pmatrix}
+  \square & \square & \square \\
+  \square & \square & \square \\
+  \square & W^r_{ij} & \square
+\end{pmatrix} .* \begin{pmatrix}
+\dot{\bf{r}}_i & \dot{\bf{r}}_j & \dot{\bf{r}}_k \\
+\dot{\bf{r}}_i & \dot{\bf{r}}_j & \dot{\bf{r}}_k \\
+\dot{\bf{r}}_i & \dot{\bf{r}}_j & \dot{\bf{r}}_k
+\end{pmatrix} - \bf{I}
+\end{equation}
+
+\begin{figure}
+\centering
+\includegraphics[height=.3\textwidth]{images/rnn_simple.png}
+\caption{Simple RNN}
+\label{fig:simple_rnn}
+\end{figure}
+
+Once we obtain $\J$, it is straightforward to compute $\nabla q(\x)$ and $\bf{H}$ via Equations (\ref{eq:Jacobian}) and (\ref{eq:Hessian}).
+
+\section{Echo State Networks}
+
+% spend some more time describing this
+
+We now consider a more complex RNN architecture: the Echo State Network (ESN). An ESN receives $I$-dimensional inputs $\bf{u} \in \mathbb{R}^I$, emits $O$-dimensional outputs $\bf{z} \in \mathbb{R}^O$, has $N$-dimensional activations $\x \in \mathbb{R}^N$ and firing rates $\bf{r} \in \mathbb{R}^N$. $\bf{r}$ is the element-wise application of a sigmoid nonlinearity (such as the hyperbolic tangent) onto $\x$. A network diagram is depicted in Figure \ref{fig:esn_arch}.
+
+\begin{figure}
+\centering
+\includegraphics[height=.7\textwidth]{images/esn.png}
+\caption{An Echo State Network (ESN) is an RNN that is trained by only varying the output weights, and feeding the output signal back into the network.}
+\label{fig:esn_arch}
+\end{figure}
+
+$W^r \in \mathbb{R}^{N \times N}$ is the matrix of recurrent weights projecting $\bf{r}$ back onto $\x$. $\bf{W}^{FB} \in \mathbb{R}^{N \times O}$ are the feedback weights projecting the output back into the activations.
+$\bf{B} \in \mathbb{R}^{N x I}$ are the weights for the input layer to the activation layer. Finally, $W^o \in \mathbb{R}^{O \times N}$ are the readout weights from the rates to the output $\bf{z}$.
+
+% describe eqn for echo-state
+The activation state vector $\x$ obeys the following dynamics:
+
+\begin{align}
+  \bf{F}(\x) &= -\x + \bf{W}_{r}\bf{r}+\bf{W}_{fb}{\bf{z}}+\bf{B}\bf{u} \label{eq:ESN} \\
+  \bf{z} &= \bf{W}_o \bf{r} \label{eq:z}
+\end{align}
+
+Our next task is to compute the Jacobian of $q(\x)$ for this particular system. Notice that we can take advantage of our previous Jacobian derviation in Equation (\ref{eq:JacRNN}) by substituting Equation (\ref{eq:z}) into Equation (\ref{eq:ESN}) and factoring out the $\bf{r}$ term:
+
+\begin{align}
+  \bf{F}(\x) &= -\x + \bf{W}_{r}\bf{r}+\bf{W}_{fb}{\bf{W}_o \bf{r}}+\bf{B}\bf{u} \\
+  \bf{F}(\x) &= -\x + (\bf{W}_{r}+\bf{W}_{fb}\bf{W}_o)\bf{r}+\bf{B}\bf{u} \\
+  &= -\x + \bf{W}^c\bf{r}+\bf{B}\bf{u}
+\end{align}
+
+The form of the Jacobian is computed in exactly the same way as that of the simpler RNN model, except $W^r$ is replaced with the combined matrix $W^c = (\bf{W}_{r}+\bf{W}_{fb}\bf{W}_o)$. The input term $\bf{B}\bf{u}$ does not depend on $\x$, and so it drops out from the Jacobian.
+
+\section{Three-Bit Flip-Flop Task}
+
+The ESN network consists of an activation state with $N=1000$ units, three input channels and three output channels. The three inputs are independent channels that typically remain at $0$, but pulse briefly at random intervals with a value of $+1$ or $-1$. Upon this pulse, the corresponding output for the input is supposed to switch to the pulsed value and remain there until the next pulse.
+
+FORCE-learning via Recursive Least Squares was used to train the network to fit both trianing and validation sets (see Methods). Initial states for $q(\x)$ minimization were chosen randomly from states within cached test trajectories. In consistency with the original papers' results, $q(\x)$ minimization revealed the existence of anywhere from 9-26 fixed points, depending on the tolerance levels used.
+
+I then projected the fixed points and 1000-dimensional test trajectories to the largest three principal components the 1000-dimensional phase spacethat the fixed points rest in. This reveals that the dynamics of the ESN occupy a 3D lattice, with eight attracting fixed points representing the eight distinct memory states (0,0,0), (0,0,1), (0,1,0), ... (1,1,1).
+
+In addition to performing $q(\x)$ minimization from initial conditions sampled from ``natural'' trajectories that occured during testing, it is also interesting to see the behavior of the system in regions \textit{not} visited by $\x$. For example, what does the phase space look like inside and outside of the cube?
+
+To chose a point within the cube manifold, I chose a random output $\bar{\z}$ that lay within stable memory states (such as (0.5,0.5,0.5)). I then used the $W^{FB}$ matrix to project $\bar{\z}$. Repeated samplings of these reveals the
+
+A 3D turntable animation can be found on the online supplemental materials.
+
+\begin{figure}
+\centering
+\includegraphics[height=.5\textwidth]{images/3bit_tanh_phase.png}
+\caption{Fixed points were computed from test trajectories, and the test trajectories themselves were projected into the largest three principal components of the, revealing a distinct lattice structure of memory states.}
+\label{fig:3bit_phase}
+\end{figure}
+
+\subsection{Evolution of Phase Portrait}
+
+How does the lattice structure of fixed points form gradually over the course of training? The stability and location of fixed points are determined entirely by the rank-three modification (via $W^o$) to the combined weight matrix, so it is evident that some form of bifurcation is occuring as $W^o$ is gradually modified via training.
+
+In this set of experiments, a fixed set of initial trajectories were chosen and were gradually bent
+
+\begin{figure}
+\centering
+\begin{subfigure}{.5\textwidth}
+  \centering
+  \includegraphics[height=.3\textheight]{images/evolve3/01.png}
+  \caption{}
+\end{subfigure}%
+\begin{subfigure}{.5\textwidth}
+  \centering
+  \includegraphics[height=.3\textheight]{images/evolve3/02.png}
+  \caption{}
+\end{subfigure}
+% empty space
+\begin{subfigure}{.5\textwidth}
+  \centering
+  \includegraphics[height=.3\textheight]{images/evolve3/07.png}
+  \caption{}
+\end{subfigure}%
+\begin{subfigure}{.5\textwidth}
+  \centering
+  \includegraphics[height=.3\textheight]{images/evolve3/10.png}
+  \caption{}
+\end{subfigure}
+\caption{Evolution of phase space over training iterations, with final fixed points overlaid. a) The network is initially at a resting state with a single fixed point at the origin. b) At 200 iterations, FORCE-learning has stretched out the attracting set to approximately 4 of the memory states. c) Stability of the center vanishes, pushing away initial trajectories that start inside the cube (red). The trajectory (blue) remains fixed on a single memory state. d) The formation of an unstable saddle at the center pushes the flow outwards, bending the test trajectory into a cuboid shape. See \href{https://github.com/ericjang/ghosts}{Supplementary Materials Online}} to see time-lapse animations of phase space reorganization.
+\label{fig:test}
+\end{figure}
+
+\section{Four-Bit Flip-Flop}
+
+I hypothesize that extending the ESN to perform a 4-bit flip-flop task would not be all that different from a 3-bit task, with the fixed points settling on a tesseract in a 4-D submanifold.
+
+
+
+\subsection{Pretraining Alters Phase Structure}
+
+Remarkably,
+
+Training 4-bit flip flop from random weights : edge-first orthogonal projection envelope, forming a hexagonal prism in 3-D space.
+Pretraining 4-bit flip flop with 3-bit task weights : Face-first orthogonal projection forms a cuboid.
+
+
+If the output weights
+The output weights themselves change over time as a result of training, and can be thought of as a dynamical system.
+
+Thus, the low-dimensional, lattice-shaped submanifold of RNN phase space that arises from training is itself a local minima.
+
+The phase space is governed by initial weights W_0 and the update rules for the weights, based on the learning rule used to train the network.
+
+The loss-surface of neural networks is not convex (citation needed), so it is not surprising that the invariant set the training converges to is heavily dependent on initial weights.
+
+Cite use of ImageNet lower-convolutional layers,
+
+\begin{figure}
+\centering
+\begin{subfigure}{.5\textwidth}
+  \centering
+  \includegraphics[height=.7\textwidth]{images/net4.png}
+  \caption{Random Initialization (hexagonal prism,edge-first) }
+\end{subfigure}%
+\begin{subfigure}{.5\textwidth}
+  \centering
+  \includegraphics[height=.7\textwidth]{images/net4_bs.png}
+  \caption{Bootstrapped (cuboid, face-first)}
+\end{subfigure}
+\caption{4-bit flip-flop, tanh. Parallel projections of tesseract to 3 dimensions. Refer to \href{https://github.com/ericjang/ghosts}{Supplementary Materials Online}} for an animated turntable view of these projections.}
+\end{figure}
+
+\section{Comparison of Nonlinear Activation Functions}
+
+% tie into deep learning,
+% show that it is really a squashing & folding operation, and the regime with which it ooerates can either perform interesting computation or completely wash the input out.
+
+Here I show that although superficially resembling each other,
+
+\begin{figure}
+\centering
+\begin{subfigure}{.5\textwidth}
+  \centering
+  \includegraphics[width=.9\textwidth]{images/mixing_zero.png}
+  \caption{Stretching and folding of $\mathbb{R}^N$, with no input }
+\end{subfigure}%
+\begin{subfigure}{.5\textwidth}
+  \centering
+  \includegraphics[width=.9\textwidth]{images/mixing_sin.png}
+  \caption{Stretching and Folding of $\mathbb{R}^N$, with periodic input}
+\end{subfigure}
+\caption{TODO - write the mixing caption}
+\end{figure}
+
+
+
+\section{Robustness to Noise}
+
+I also wanted to quantify how the networks were able to maintain the stability of their computations even in the face of perturbations to the network. Gaussian noise distributed with $(\mu=0,\sigma=\eta)$ was added to the recurrent weights $W_r$ of the network.
+
+\begin{figure}
+\centering
+\includegraphics[height=.7\textwidth]{images/stability.png}
+\caption{MSE of networks trained to perform the 4-bit flip-flop task, then subjected to random Gaussian noise added to their recurrent weight matrices. Networks with sigmoid nonlinearities are the most robust to perturbations.}
+\label{fig:esn_arch}
+\end{figure}
+
+
+\section{Discussion}
+
+% wrap up everything
+
+Memory state in an RNN is equivalent to an attracting submanifold.
+
+The organization of fixed points in phase space reveals to use the memory capacity of the network. As shown
+
+Fixed points serve as memory states.
+
+As discussed in Sussillo and Barak, saddle node funnel large volumes of phase space through narrow regions, which can potentially prevent trajectories from diving into nearby, incorrect trajectors.
+
+\subsection{Limitations}
+
+Although imaginary eigenvalues suggest periodic motion locally, fixed points do not paint the entire picture
+
+Humans have good spatial reasoning for up to three dimensions, but after that it becomes difficult to understand the dynamics, even if we had a full phase portrait with all the fixed points.
+
+they are not sufficient for detecting spirals, limit cycles, or period-N orbits.
+
+In supervised training of ANNs, the loss surface with respect to the weights of the network is highly non-convex. Convex optimization techniques like SGD are used anyway, and tend perform remarkably well. However, ``plateaus'' in training can occur where the evolution of weights is stuck in a local minima.
+
+\subsection{Future Directions}
+
+\section{Methods}
+
+This section discusses in further detail the parameters used for network simulation. All source code was written by Eric Jang, and can be downloaded from \url{https://github.com/ericjang/ghosts}
+
+\subsection{Network Parameters}
+
+Simulation Parameters
+
+\begin{table}[t]
+\caption{Network Parameters}
+\label{sample-table}
+\begin{center}
+\begin{tabular}{lll}
+\multicolumn{1}{c}{\bf Parameter} & \multicolumn{1}{c}{\bf Value}  &\multicolumn{1}{c}{\bf Description}
+\\ \hline \\
+N & 1000 & Number of units in activation layer \x \\
+g & 1.5 & gain of network \\
+alpha & 1 & Learning rate of the Network \\
+tau & 10 & Time constant of \dot{x}\\
+\delta_{\text{train}} & 2 & Interval between weight updates\\
+Training Duration         &30000 & Length of each training trajectory \\
+Testing Duration             &5000 & Length of each testing trajectory\\
+\end{tabular}
+\end{center}
+\end{table}
+
+
+\subsection{FORCE-Learning with Recursive Least Squares}
+
+
+
+In an echo-state architecture, only the readout weights $W^o$ are modified during training. The key insight of the ESN architecture is that as long as the internal state of the network can be decoded into the correct output, it is irrelevant what the internal state is doing. The recurrent weights $W^{FB}$ only serve the purpose of generating a resevoir of turbulent activity in the network, that can be decoded downstream into a meaningful output.
+
+A key challenge in
+FORCE (first-order reduced and controlled error) is a weight-update scheme for RNNs where output weights are modified on a time scale comprable to network simulation.  \cite{Sussillo2009544}.
+
+A perfectly trained $RNN$ has access to current inputs and operates on correct inputs, so intuitively, one wishes to feed back the target function to the network (regardless of whether it matched or not), because incorrect feedback will certainly lead the network to incorrect computation.
+
+In FORCE-learning, the feedback is not clamped to the target function, but rather the weights are updated so frequently that all error mangitudes remain small.
+
+At intervals of $\delta T$, the matrix $Wo$ and running estimate of In this work, the matrix $Wo$ is updated via the following rule,
+
+\begin{equation} \label{eq:FORCE1}
+\bf{W^o}(t) = W^o{(t+\Delta t)} - \bf{e}_{-}(t)(\bf{P}(t)\bf{r}(t))^\intercal
+\end{equation}
+
+
+\begin{equation}
+\bf{P}(t) = \bf{P}(t-\Delta t) - \frac{P(t-\Delta t)\bf{r}(t)\bf{r}(t)^{\intercal}P(t-\Delta t)}{1+\bf{r}^{\intercal}(t)\bf{P}(t-\Delta t)\bf{r}(t)}
+\end{equation}
+
+$\bf{e}_{-}(t)$ is output error of the current timestep prior to weight modifcation, and $P(t)$ is a running estimate of the inverse correlation matrix between the units in $\x$.
+
+\begin{figure}
+\centering
+\begin{subfigure}{.5\textwidth}
+  \centering
+  \includegraphics[height=.3\textheight]{images/train3_tanh_zft.png}
+  \caption{}
+\end{subfigure}%
+\begin{subfigure}{.5\textwidth}
+  \centering
+  \includegraphics[height=.3\textheight]{images/train3_tanh_test.png}
+  \caption{}
+\end{subfigure}
+% empty space
+\begin{subfigure}{.5\textwidth}
+  \centering
+  \includegraphics[height=.3\textheight]{images/train3_tanh_mse.png}
+  \caption{}
+\end{subfigure}%
+\begin{subfigure}{.5\textwidth}
+  \centering
+  \includegraphics[height=.3\textheight]{images/train3_tanh_wo.png}
+  \caption{}
+\end{subfigure}
+\caption{TODO!!!}
+\label{fig:test}
+\end{figure}
+
+\subsection{Implementation Details}
+
+Experiments were performed on a 4.0 Intel Core i7 workstation. Conjugate-gradient minimization of $q(\x)$ took approximately 3 minutes to find 20 fixed points or ghosts.
+
+\section*{Acknowledgments}
+
+I thank Dr. John Gemmer for his guidance on my project proposal, and for his communicating the wonder of nonlinear dynamical systems to the APMA1360 class this semester.
+
+\bibliographystyle{unsrt}
+\bibliography{mybib}
+\section*{References}
+
+\end{document}
